@@ -30,31 +30,31 @@ cam.start_acquisition()
 while cv2.waitKey() != ord('q'):
     cam.get_image(img)
     image = img.get_image_data_numpy()
-    image = cv2.resize(image,(240,240))
+    image = cv2.resize(image,(1000,1000))
 
     cv2.imshow("test", image)
     cv2.waitKey()   
 
-# for i in range(10):
-#     #get data and pass them from camera to img
-#     cam.get_image(img)
-#     image = img.get_image_data_numpy()
-#     cv2.imshow("test", image)
-#     cv2.waitKey()
-#     #get raw data from camera
-#     #for Python2.x function returns string
-#     #for Python3.x function returns bytes
-#     data_raw = img.get_image_data_raw()
-#
-#     #transform data to list
-#     data = list(data_raw)
-#
-#     #print image data and metadata
-#     print('Image number: ' + str(i))
-#     print('Image width (pixels):  ' + str(img.width))
-#     print('Image height (pixels): ' + str(img.height))
-#     print('First 10 pixels: ' + str(data[:10]))
-#     print('\n')
+for i in range(10):
+    #get data and pass them from camera to img
+    cam.get_image(img)
+    image = img.get_image_data_numpy()
+    cv2.imshow("test", image)
+    cv2.waitKey()
+    #get raw data from camera
+    #for Python2.x function returns string
+    #for Python3.x function returns bytes
+    data_raw = img.get_image_data_raw()
+
+    #transform data to list
+    data = list(data_raw)
+
+    #print image data and metadata
+    print('Image number: ' + str(i))
+    print('Image width (pixels):  ' + str(img.width))
+    print('Image height (pixels): ' + str(img.height))
+    print('First 10 pixels: ' + str(data[:10]))
+    print('\n')
 
 # stop data acquisition
 print('Stopping acquisition...')

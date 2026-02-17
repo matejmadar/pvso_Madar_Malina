@@ -62,6 +62,17 @@ for i in range(h):
         rot[j][h-1-i] = c2[i][j]
 mozaika[0:h, w:w*2] = rot
 
+# bod 5 – iba cerveny kanal v 3. casti mozaiky
+c3 = mozaika[h:h*2, 0:w]
+c3[:, :, 0] = 0   # B
+c3[:, :, 1] = 0   # G
+
+# bod 6 – informacie o obraze
+print("\n   Basic info:")
+print("dtype:", mozaika.dtype)
+print("rozmer (shape):", mozaika.shape)
+print("velkost (pocet prvkov):", mozaika.size)
+
 cv2.imwrite("mozaika.png", mozaika)
 cv2.imshow("mozaika", mozaika)
 cv2.waitKey(0)

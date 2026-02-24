@@ -1,0 +1,56 @@
+{
+  "image_size": {
+    "width": 2464,
+    "height": 2056
+  },
+  "chessboard_size": {
+    "cols": 5,
+    "rows": 7
+  },
+  "square_size": 1.0,
+  "rms": 2.491125354609835,
+  "reprojection_error": 2.491124080996148,
+  "camera_matrix": [
+    [
+      3850.902444961597,
+      0.0,
+      1183.087199972605
+    ],
+    [
+      0.0,
+      3843.4361249456024,
+      941.8026007262526
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "dist_coeffs": [
+    [
+      -0.4110643539761344,
+      0.5540526343007838,
+      0.0008937929270212248,
+      0.0008199394177220738,
+      -0.8191856084645296
+    ]
+  ],
+  "used_images": [
+    "calib1.png",
+    "calib10.png",
+    "calib11.png",
+    "calib12.png",
+    "calib13.png",
+    "calib14.png",
+    "calib15.png",
+    "calib2.png",
+    "calib3.png",
+    "calib4.png",
+    "calib5.png",
+    "calib6.png",
+    "calib7.png",
+    "calib8.png",
+    "calib9.png"
+  ]
+}

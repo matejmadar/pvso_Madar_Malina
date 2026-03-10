@@ -1,16 +1,24 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import math
 import json
 from pathlib import Path
 import numpy as np
 import cv2
+import numpy as np
 from ximea import xiapi
 
 CALIBRATION_JSON = Path(__file__).resolve().parent / "camera_parameters.json"
 
 PREVIEW_SCALE = 0.4
 
+# Hough circle parameters (tune for your scene if needed)
+HOUGH_DP = 1.2
+HOUGH_MIN_DIST = 70
+HOUGH_PARAM1 = 120
+HOUGH_PARAM2 = 35
+HOUGH_MIN_RADIUS = 20
+HOUGH_MAX_RADIUS = 0
 
 def classify_shape(contour, min_area, circularity_thresh) -> str | None:
     area = cv2.contourArea(contour)

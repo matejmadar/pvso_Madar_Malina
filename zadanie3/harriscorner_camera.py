@@ -1,41 +1,34 @@
-from __future__ import annotations
-
-import json
-from pathlib import Path
-
 import cv2
 import numpy as np
+import json
 from ximea import xiapi
 
-CALIBRATION_JSON = Path(__file__).resolve().parent / "second calibration" / "camera_calibration" / "camera_parameters.json"
+CALIBRATION_PATH = "camera_parameters.json"
 PREVIEW_SCALE = 0.35
 WINDOW_NAME = "Harris Corner Detection"
 
 
-def load_calibration(json_path: Path) -> tuple[np.ndarray, np.ndarray]:
-    if not json_path.exists():
-        raise FileNotFoundError(f"calibracne data nenajdene: {json_path}")
-    data = json.loads(json_path.read_text(encoding="utf-8"))
-    camera_matrix = np.array(data["camera_matrix"], dtype=np.float64)
+def load_calibration(path):
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    cam_matrix = np.array(data["camera_matrix"], dtype=np.float64)
     dist_coeffs = np.array(data["dist_coeffs"], dtype=np.float64)
     if dist_coeffs.ndim == 1:
         dist_coeffs = dist_coeffs.reshape(1, -1)
-    return camera_matrix, dist_coeffs
+    return cam_matrix, dist_coeffs
 
 
-def crop_to_roi(image: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
+def crop_to_roi(image, roi):
     x, y, w, h = roi
     if w <= 0 or h <= 0:
         return image
     x, y = max(0, x), max(0, y)
     x2 = min(image.shape[1], x + w)
     y2 = min(image.shape[0], y + h)
-    if x2 <= x or y2 <= y:
-        return image
-    return image[y:y2, x:x2]
+    return image[y:y2, x:x2] if x2 > x and y2 > y else image
 
 
-def convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+def convolve2d(img, kernel):
     kh, kw = kernel.shape
     ph, pw = kh // 2, kw // 2
     padded = np.pad(img, ((ph, ph), (pw, pw)), mode='reflect')
@@ -45,58 +38,46 @@ def convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     return np.einsum('ijkl,kl->ij', windows, kernel)
 
 
-def gaussian_kernel(size: int = 5, sigma: float = 1.0) -> np.ndarray:
+def gaussian_kernel(size=5, sigma=1.0):
     ax = np.arange(-(size // 2), size // 2 + 1)
     xx, yy = np.meshgrid(ax, ax)
     k = np.exp(-(xx**2 + yy**2) / (2 * sigma**2))
     return k / k.sum()
 
 
-def harris_response(gray: np.ndarray, k: float = 0.05) -> tuple[np.ndarray, np.ndarray]:
+def harris_response(gray, k=0.05):
     Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
     Ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32)
-
     smooth = convolve2d(gray, gaussian_kernel(5, 1.0))
     Ix = convolve2d(smooth, Kx)
     Iy = convolve2d(smooth, Ky)
-
     g = gaussian_kernel(3, 1.0)
     Ixx = convolve2d(Ix * Ix, g)
     Ixy = convolve2d(Ix * Iy, g)
     Iyy = convolve2d(Iy * Iy, g)
-
     det   = Ixx * Iyy - Ixy**2
     trace = Ixx + Iyy
-    R = det - k * trace**2
-    return R, smooth  # vraciame aj smooth na odhad sumu
+    return det - k * trace**2, smooth
 
 
-def draw_corners(frame_bgr: np.ndarray, R: np.ndarray, threshold_ratio: float) -> tuple[np.ndarray, int]:
-    result = frame_bgr.copy()
-    ys, xs = np.where(R > threshold_ratio * R.max())
+def nms(R, min_dist=5):
+    from scipy.ndimage import maximum_filter
+    local_max = maximum_filter(R, size=min_dist)
+    return (R == local_max) & (R > 0)
+
+
+def draw_corners(frame, R, thresh):
+    result = frame.copy()
+    mask = nms(R) & (R > thresh * R.max())
+    ys, xs = np.where(mask)
     for y, x in zip(ys, xs):
-        cv2.circle(result, (x, y), 3, (0, 0, 255), -1)
+        cv2.circle(result, (x, y), 2, (0, 0, 255), -1)
     return result, len(xs)
 
 
-def compute_stats(gray: np.ndarray, smooth: np.ndarray) -> dict:
-    brightness = float(np.mean(gray))
-    noise = float(np.std(gray - smooth))
-    return {
-        "jas": round(brightness, 1),
-        "sum":      round(noise, 3),
-        "tmavy":       brightness < 60,
-    }
-
-
-def put_stats(img: np.ndarray, title: str, corners: int, stats: dict, color=(0, 255, 0)) -> None:
-    lines = [
-        title,
-        f"rohy: {corners}",
-        f"jas: {stats['brightness']:.1f}",
-        f"sum cca: {stats['noise']:.2f}",
-        f"tmavy: {'YES' if stats['dark'] else 'no'}",
-    ]
+def put_stats(img, title, corners, brightness, noise, dark, color):
+    lines = [title, f"Corners: {corners}", f"Brightness: {brightness:.1f}",
+             f"Noise: {noise:.3f}", f"Dark: {'YES' if dark else 'no'}"]
     for i, line in enumerate(lines):
         cv2.putText(img, line, (15, 35 + i * 28),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
@@ -105,96 +86,77 @@ def put_stats(img: np.ndarray, title: str, corners: int, stats: dict, color=(0, 
 def nothing(_): pass
 
 
-def main() -> None:
-    camera_matrix, dist_coeffs = load_calibration(CALIBRATION_JSON)
+cam_matrix, dist_coeffs = load_calibration(CALIBRATION_PATH)
 
-    cv2.namedWindow(WINDOW_NAME)
-    cv2.createTrackbar("Prah %", WINDOW_NAME, 1, 20, nothing)
+cv2.namedWindow(WINDOW_NAME)
+cv2.createTrackbar("Threshold %", WINDOW_NAME, 1, 20, nothing)
 
-    cam = xiapi.Camera()
-    xi_img = xiapi.Image()
-    device_opened = False
-    acquisition_started = False
+cam = xiapi.Camera()
+xi_img = xiapi.Image()
+device_opened = False
+acquisition_started = False
 
-    try:
-        cam.open_device()
-        device_opened = True
+try:
+    cam.open_device()
+    device_opened = True
 
-        cam.set_exposure(50000)
-        cam.set_param("imgdataformat", "XI_RGB32")
-        cam.set_param("auto_wb", 1)
+    cam.set_exposure(50000)
+    cam.set_param("imgdataformat", "XI_RGB32")
+    cam.set_param("auto_wb", 1)
+    cam.set_offsetX(0)
+    cam.set_offsetY(0)
+    cam.set_width(cam.get_width_maximum())
+    cam.set_height(cam.get_height_maximum())
 
-        max_width = cam.get_width_maximum()
-        max_height = cam.get_height_maximum()
-        cam.set_offsetX(0)
-        cam.set_offsetY(0)
-        cam.set_width(max_width)
-        cam.set_height(max_height)
+    w, h = cam.get_width(), cam.get_height()
+    new_cam_matrix, roi = cv2.getOptimalNewCameraMatrix(
+        cam_matrix, dist_coeffs, (w, h), 1, (w, h)
+    )
 
-        width = cam.get_width()
-        height = cam.get_height()
-        image_size = (width, height)
+    cam.start_acquisition()
+    acquisition_started = True
+    print(f"Running at {w}x{h} – press Q to quit.")
 
-        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(
-            camera_matrix, dist_coeffs, image_size, 1, image_size
-        )
+    while True:
+        cam.get_image(xi_img)
+        frame = xi_img.get_image_data_numpy()
 
-        print(f"rozlisenie: {width} x {height}")
-        print("q - vypnut")
+        if frame.ndim == 3 and frame.shape[2] == 4:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
 
-        cam.start_acquisition()
-        acquisition_started = True
+        undistorted = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
+        undistorted = crop_to_roi(undistorted, roi)
 
-        while True:
-            cam.get_image(xi_img)
-            frame = xi_img.get_image_data_numpy()
+        gray = (0.114 * undistorted[:, :, 0] +
+                0.587 * undistorted[:, :, 1] +
+                0.299 * undistorted[:, :, 2]).astype(np.float32)
 
-            if frame.ndim == 3 and frame.shape[2] == 4:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+        thresh = max(1, cv2.getTrackbarPos("Threshold %", WINDOW_NAME)) / 100.0
 
-            undistorted = cv2.undistort(frame, camera_matrix, dist_coeffs, None, new_camera_matrix)
-            undistorted = crop_to_roi(undistorted, roi)
+        R_manual, smooth = harris_response(gray)
+        result_manual, cnt_manual = draw_corners(undistorted, R_manual, thresh)
 
-            # grayscale manualne
-            gray = (0.114 * undistorted[:, :, 0] +
-                    0.587 * undistorted[:, :, 1] +
-                    0.299 * undistorted[:, :, 2]).astype(np.float32)
+        R_cv = cv2.cornerHarris(gray, blockSize=3, ksize=3, k=0.05)
+        result_opencv, cnt_opencv = draw_corners(undistorted, R_cv, thresh)
 
-            # threshold zo slidera (1-20 %)
-            thresh_pct = max(1, cv2.getTrackbarPos("prah %", WINDOW_NAME)) / 100.0
+        brightness = float(np.mean(gray))
+        noise = float(np.std(gray - smooth))
+        dark = brightness < 60
 
-            # manualny Harris
-            R_manual, smooth = harris_response(gray)
-            result_manual, cnt_manual = draw_corners(undistorted, R_manual, thresh_pct)
+        put_stats(result_manual, "Manual Harris", cnt_manual, brightness, noise, dark, (0, 200, 255))
+        put_stats(result_opencv, "OpenCV Harris", cnt_opencv, brightness, noise, dark, (0, 255, 0))
 
-            # OpenCV Harris
-            R_cv = cv2.cornerHarris(gray, blockSize=3, ksize=3, k=0.05)
-            result_opencv = undistorted.copy()
-            mask_cv = R_cv > thresh_pct * R_cv.max()
-            result_opencv[mask_cv] = [0, 0, 255]
-            cnt_opencv = int(np.sum(mask_cv))
+        combined = np.hstack((result_manual, result_opencv))
+        preview = cv2.resize(combined, None, fx=PREVIEW_SCALE, fy=PREVIEW_SCALE)
+        cv2.imshow(WINDOW_NAME, preview)
 
-            stats = compute_stats(gray, smooth)
+        if (cv2.waitKey(1) & 0xFF) == ord("q"):
+            break
 
-            put_stats(result_manual, "manualny Harris", cnt_manual, stats)
-            put_stats(result_opencv, "openCV Harris", cnt_opencv, stats)
-
-            combined = np.hstack((result_manual, result_opencv))
-            preview = cv2.resize(combined, None, fx=PREVIEW_SCALE, fy=PREVIEW_SCALE)
-
-            cv2.imshow(WINDOW_NAME, preview)
-
-            if (cv2.waitKey(1) & 0xFF) == ord("q"):
-                break
-
-    finally:
-        cv2.destroyAllWindows()
-        if acquisition_started:
-            cam.stop_acquisition()
-        if device_opened:
-            cam.close_device()
-        print("kamera vypnuta")
-
-
-if __name__ == "__main__":
-    main()
+finally:
+    cv2.destroyAllWindows()
+    if acquisition_started:
+        cam.stop_acquisition()
+    if device_opened:
+        cam.close_device()
+    print("Camera closed.")

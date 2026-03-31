@@ -1,14 +1,11 @@
-from __future__ import annotations
-
-import sys
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 
-IMAGE_PATH = "test.jpg"   # zmen na svoju cestu
+IMAGE_PATH = "test6.jpg"
+THRESH = 0.01  # 1 % z maxima
 
 
-def convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+def convolve2d(img, kernel):
     kh, kw = kernel.shape
     ph, pw = kh // 2, kw // 2
     padded = np.pad(img, ((ph, ph), (pw, pw)), mode='reflect')
@@ -18,17 +15,17 @@ def convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     return np.einsum('ijkl,kl->ij', windows, kernel)
 
 
-def gaussian_kernel(size: int = 5, sigma: float = 1.0) -> np.ndarray:
+def gaussian_kernel(size=5, sigma=1.0):
     ax = np.arange(-(size // 2), size // 2 + 1)
     xx, yy = np.meshgrid(ax, ax)
     k = np.exp(-(xx**2 + yy**2) / (2 * sigma**2))
     return k / k.sum()
 
 
-def harris_response(gray: np.ndarray, k: float = 0.05) -> tuple[np.ndarray, np.ndarray]:
+def harris_response(gray, k=0.05):
     Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
     Ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32)
-    smooth = convolve2d(gray, gaussian_kernel(5, 1.0))
+    smooth = convolve2d(gray, gaussian_kernel(4, 0.45))
     Ix = convolve2d(smooth, Kx)
     Iy = convolve2d(smooth, Ky)
     g = gaussian_kernel(3, 1.0)
@@ -37,83 +34,69 @@ def harris_response(gray: np.ndarray, k: float = 0.05) -> tuple[np.ndarray, np.n
     Iyy = convolve2d(Iy * Iy, g)
     det   = Ixx * Iyy - Ixy**2
     trace = Ixx + Iyy
-    R = det - k * trace**2
-    return R, smooth
+    return det - k * trace**2, smooth
 
 
-def draw_corners_bgr(frame: np.ndarray, R: np.ndarray, thresh: float) -> tuple[np.ndarray, int]:
+def nms(R, min_dist=5):
+    # zachova len lokalne maximuma v okoli min_dist x min_dist
+    from scipy.ndimage import maximum_filter
+    local_max = maximum_filter(R, size=min_dist)
+    return (R == local_max) & (R > 0)
+
+def draw_corners(frame, R, thresh):
     result = frame.copy()
-    ys, xs = np.where(R > thresh * R.max())
+    mask = nms(R) & (R > thresh * R.max())
+    ys, xs = np.where(mask)
     for y, x in zip(ys, xs):
-        cv2.circle(result, (x, y), 3, (0, 0, 255), -1)
+        cv2.circle(result, (x, y), 2, (0, 0, 255), -1)
     return result, len(xs)
 
 
-def compute_stats(gray: np.ndarray, smooth: np.ndarray) -> dict:
-    brightness = float(np.mean(gray))
-    noise = float(np.std(gray - smooth))
-    return {
-        "brightness": round(brightness, 2),
-        "noise_est":  round(noise, 3),
-        "dark":       brightness < 60,
-    }
+img = cv2.imread(IMAGE_PATH)
+if img is None:
+    raise FileNotFoundError(f"Subor '{IMAGE_PATH}' nebol najdeny.")
 
+gray = (0.114 * img[:, :, 0] +
+        0.587 * img[:, :, 1] +
+        0.299 * img[:, :, 2]).astype(np.float32)
 
-def main() -> None:
-    img_bgr = cv2.imread(IMAGE_PATH)
-    if img_bgr is None:
-        sys.exit(f"[ERROR] Subor '{IMAGE_PATH}' nebol najdeny.")
+R_manual, smooth = harris_response(gray)
+result_manual, cnt_manual = draw_corners(img, R_manual, THRESH)
 
-    # grayscale manualne
-    gray = (0.114 * img_bgr[:, :, 0] +
-            0.587 * img_bgr[:, :, 1] +
-            0.299 * img_bgr[:, :, 2]).astype(np.float32)
+R_cv = cv2.cornerHarris(gray, blockSize=3, ksize=3, k=0.05)
+result_opencv, cnt_opencv = draw_corners(img, R_cv, THRESH)
 
-    THRESH = 0.01   # 1 % z maxima – zmen podla potreby
+brightness = round(float(np.mean(gray)), 2)
+noise      = round(float(np.std(gray - smooth)), 3)
+dark       = brightness < 60
 
-    # manuálny Harris
-    R_manual, smooth = harris_response(gray)
-    result_manual, cnt_manual = draw_corners_bgr(img_bgr, R_manual, THRESH)
-    stats = compute_stats(gray, smooth)
+print(f"Manual corners: {cnt_manual}")
+print(f"OpenCV corners: {cnt_opencv}")
+print(f"Brightness:     {brightness}")
+print(f"Noise est.:     {noise}")
+print(f"Dark:           {dark}")
 
-    # OpenCV Harris
-    R_cv = cv2.cornerHarris(gray, blockSize=3, ksize=3, k=0.05)
-    result_opencv = img_bgr.copy()
-    mask_cv = R_cv > THRESH * R_cv.max()
-    result_opencv[mask_cv] = [0, 0, 255]
-    cnt_opencv = int(np.sum(mask_cv))
+def add_label(img, text):
+    out = img.copy()
+    cv2.putText(out, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
+    return out
 
-    # výpis štatistík
-    print(f"Jas:   {stats['brightness']}")
-    print(f"Sum cca:   {stats['noise_est']}")
-    print(f"Tmavy frame:   {stats['dark']}")
-    print(f"Manualne rohy:  {cnt_manual}")
-    print(f"OpenCV rohy:  {cnt_opencv}")
+panel_orig   = add_label(img, "Original")
+panel_manual = add_label(result_manual, f"Manual Harris  corners:{cnt_manual}")
+panel_opencv = add_label(result_opencv, f"OpenCV Harris  corners:{cnt_opencv}")
 
-    # vizualizácia
-    orig_rgb    = cv2.cvtColor(img_bgr,      cv2.COLOR_BGR2RGB)
-    manual_rgb  = cv2.cvtColor(result_manual, cv2.COLOR_BGR2RGB)
-    opencv_rgb  = cv2.cvtColor(result_opencv, cv2.COLOR_BGR2RGB)
+stats_line = f"Brightness:{brightness}  Noise:{noise}  Dark:{'YES' if dark else 'no'}"
+combined = np.hstack((panel_orig, panel_manual, panel_opencv))
+cv2.putText(combined, stats_line, (10, combined.shape[0] - 12),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 200, 200), 1, cv2.LINE_AA)
 
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    for ax, img, title in zip(axes,
-                               [orig_rgb, manual_rgb, opencv_rgb],
-                               ["Originál",
-                                f"Manualny Harris  (rohov: {cnt_manual})",
-                                f"OpenCV Harris  (rohov: {cnt_opencv})"]):
-        ax.imshow(img)
-        ax.set_title(title, fontsize=11)
-        ax.axis('off')
-
-    plt.suptitle(
-        f"Prah: {int(THRESH*100)} %  |  Jas: {stats['brightness']}  "
-        f"|  Sum: {stats['noise_est']}  |  Tmavy: {stats['dark']}",
-        fontsize=10, color='gray'
-    )
-    plt.tight_layout()
-    plt.savefig("harris_porovnanie.png", dpi=150)
-    plt.show()
-
-
-if __name__ == "__main__":
-    main()
+cv2.imwrite("harris_porovnanie.png", combined)
+max_width = 1900
+if combined.shape[1] > max_width:
+    scale = max_width / combined.shape[1]
+    preview = cv2.resize(combined, None, fx=scale, fy=scale)
+else:
+    preview = combined
+cv2.imshow("Original | Manual | OpenCV", preview)
+cv2.waitKey(0)
+cv2.destroyAllWindows()

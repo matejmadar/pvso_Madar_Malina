@@ -14,6 +14,19 @@ THRESHOLD_RATIO = 0.01
 NMS_RADIUS = 1
 OUTPUT_DIR = Path(__file__).resolve().parent / "harris_outputs"
 
+_REF_H = 300
+
+
+def _font_scale(img):
+    h = img.shape[0]
+    ratio = max(h / _REF_H, 1.0)
+    scale = 0.55 * ratio
+    thickness = max(2, int(2 * ratio))
+    y1 = int(35 * ratio)
+    y2 = int(70 * ratio)
+    x = int(15 * ratio)
+    return scale, thickness, x, y1, y2
+
 
 def normalize_for_display(arr):
     mn, mx = float(arr.min()), float(arr.max())
@@ -34,9 +47,10 @@ def fit_to_screen(image, screen_w, screen_h, margin=120):
 
 def label(img, text1, text2=""):
     out = img.copy()
-    cv2.putText(out, text1, (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
+    sc, th, x, y1, y2 = _font_scale(out)
+    cv2.putText(out, text1, (x, y1), cv2.FONT_HERSHEY_SIMPLEX, sc, (0, 255, 0), th, cv2.LINE_AA)
     if text2:
-        cv2.putText(out, text2, (15, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 0), 2, cv2.LINE_AA)
+        cv2.putText(out, text2, (x, y2), cv2.FONT_HERSHEY_SIMPLEX, sc * 0.8, (255, 255, 0), th, cv2.LINE_AA)
     return out
 
 

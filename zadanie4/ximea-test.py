@@ -8,10 +8,10 @@ import cv2
 EXPOSURE_US      = 10000   # čas expozície v mikrosekundách (napr. 1000 = 1ms)
 GAIN_DB          = 0.0     # zosilnenie v dB (0 = žiadne, vyššie = jasnejší obraz)
 
-AUTO_EXPOSURE    = False   # True = automatická expozícia a gain
-AUTO_WB          = False   # True = automatické vyváženie bielej
+AUTO_EXPOSURE    = True   # True = automatická expozícia a gain
+AUTO_WB          = True   # True = automatické vyváženie bielej
 
-WB_RED           = 1.0     # koeficient červeného kanála (ručné vyváženie bielej)
+WB_RED           = 2.5     # koeficient červeného kanála (ručné vyváženie bielej)
 WB_GREEN         = 1.0     # koeficient zeleného kanála
 WB_BLUE          = 1.0     # koeficient modrého kanála
 

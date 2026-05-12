@@ -3,23 +3,20 @@ import cv2
 import os
 import sys
 
-# =============================================================================
 # NASTAVENIA KAMERY – uprav podľa podmienok osvetlenia
-# =============================================================================
 
 OUTPUT_DIR    = "/home/matej/gaussian_data/moja_scena/input"  # kam sa ukladajú fotky
 
-EXPOSURE_US   = 15000       # expozícia v µs – zníž pri jasnom svetle, zvýš pri tme
-GAIN_DB       = 0.0        # gain – nechaj 0, zvýš len ak je obraz tmavý (pridáva šum)
+EXPOSURE_US   = 15000       # expozícia v µs - znížit pri jasnom svetle
+GAIN_DB       = 0.0        # gain (pridáva šum)
 
-WB_RED        = 1.6        # vyváženie bielej – pre dennné svetlo sú tieto hodnoty dobrý štart
+WB_RED        = 1.6        # vyváženie bielej
 WB_GREEN      = 1.0
 WB_BLUE       = 1.8
 
 IMAGE_FORMAT  = "XI_RGB24" # farebný obraz
-SAVE_FORMAT   = ".png"     # PNG = bezstratový, lepší pre COLMAP; JPG = menší súbor
+SAVE_FORMAT   = ".png"
 
-# =============================================================================
 
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -29,7 +26,7 @@ def main():
     cam.open_device()
     print(f"Kamera: {cam.get_device_name()}  |  SN: {cam.get_device_sn()}")
 
-    # Pevné nastavenia – konzistentný vzhľad všetkých fotiek
+    # Pevné nastavenia
     cam.disable_aeag()
     cam.set_exposure(EXPOSURE_US)
     cam.set_gain(GAIN_DB)
@@ -65,15 +62,13 @@ def main():
         cam.get_image(img)
         frame = img.get_image_data_numpy()
 
-        # XIMEA na tejto kamere vracia BGR priamo – žiadna konverzia
+        # XIMEA na tejto kamere vracia BGR priamo, žiadna konverzia
         display = frame.copy()
 
-        # Info overlay
         info = f"Snimky: {count}  |  MEDZERNIK = uloz  |  Q = koniec"
         cv2.putText(display, info, (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-        # Náhľad – zmenšený na 1/2 pre rýchle zobrazenie
         h, w = display.shape[:2]
         preview = cv2.resize(display, (w // 2, h // 2))
         cv2.imshow("XIMEA – MEDZERNIK = uloz, Q = koniec", preview)
@@ -81,10 +76,8 @@ def main():
         key = cv2.waitKey(1) & 0xFF
 
         if key in (ord(' '), ord('s')):
-            # Uloženie v plnom rozlíšení (nie zmenšený náhľad)
             filename = os.path.join(OUTPUT_DIR, f"img_{count:04d}{SAVE_FORMAT}")
 
-            # Kamera vracia BGR – ukladáme priamo bez konverzie
             save_frame = frame.copy()
 
             if SAVE_FORMAT == ".png":
@@ -95,7 +88,7 @@ def main():
             count += 1
             print(f"  Uložená: {filename}  ({count} celkom)")
 
-        elif key in (ord('q'), 27):  # Q alebo ESC
+        elif key in (ord('q'), 27):
             break
 
     cam.stop_acquisition()
